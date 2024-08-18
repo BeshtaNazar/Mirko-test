@@ -20,7 +20,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 #[Route('/api/post', defaults: ["_format" => "json"])]
 class PostController extends AbstractController
 {
-    public function __construct(private PostRepository $postRepository)
+    public function __construct(private PostRepository $postRepository, #[Autowire('%kernel.project_dir%/public/uploads/post/images')] private string $imagesDirectory)
     {
     }
     #[Route('/', name: 'app_post', methods: "GET")]
@@ -47,7 +47,6 @@ class PostController extends AbstractController
         SluggerInterface $slugger,
         SerializerInterface $serializer,
         ValidatorInterface $validator,
-        #[Autowire('%kernel.project_dir%/public/uploads/post/images')] string $imagesDirectory
     ) {
         $data = $request->request->all();
         $post = new Post();
@@ -74,7 +73,7 @@ class PostController extends AbstractController
             $em->beginTransaction();
             $em->persist($post);
             $em->flush();
-            $postImage->move($imagesDirectory, $newFileName);
+            $postImage->move($this->imagesDirectory, $newFileName);
             $em->commit();
             $postJson = $serializer->serialize($post, 'json', context: [
                 'circular_reference_handler' => function ($object) {
@@ -85,8 +84,8 @@ class PostController extends AbstractController
         } catch (\Exception $e) {
             $em->rollback();
             $filesystem = new Filesystem();
-            if ($filesystem->exists($imagesDirectory . '/' . $newFileName)) {
-                $filesystem->remove($imagesDirectory . '/' . $newFileName);
+            if ($filesystem->exists($this->imagesDirectory . '/' . $newFileName)) {
+                $filesystem->remove($this->imagesDirectory . '/' . $newFileName);
             }
             return throw $e;
         }
@@ -100,6 +99,10 @@ class PostController extends AbstractController
         }
         if ($this->getUser() !== $post->getAuthor()) {
             return $this->json(["error" => "Access denied."], Response::HTTP_FORBIDDEN);
+        }
+        $filesystem = new Filesystem();
+        if ($filesystem->exists($this->imagesDirectory . '/' . $post->getImageFilename())) {
+            $filesystem->remove($this->imagesDirectory . '/' . $post->getImageFilename());
         }
         $em->remove($post);
         $em->flush();
